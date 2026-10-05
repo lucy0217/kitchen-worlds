@@ -1,0 +1,77 @@
+name: ci_checks
+
+on: [push]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8]
+    steps:
+    - name: Checkout repo and submodules
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - run: |  # Unit tests require lisdf-models
+        pip install -e .[develop]
+        pip install lisdf_models@git+https://github.com/Learning-and-Intelligent-Systems/lisdf-models.git
+    - name: Pytest
+      run: |
+        # Note tests/ directory is not included in coverage
+        pytest -s tests/ --cov-config=.coveragerc --cov=lisdf/ --cov-fail-under=75 --cov-report=term-missing:skip-covered
+  static-type-checking:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |  # mypy needs lisdf-models for lisdf/parsing/parse_sdf.py
+        pip install -e .[develop]
+        pip install lisdf_models@git+https://github.com/Learning-and-Intelligent-Systems/lisdf-models.git
+    - name: Mypy
+      run: |
+        mypy . --config-file mypy.ini
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        pip install -e .[develop]
+    - name: Flake8
+      run: |
+        flake8
+  autoformat:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Run isort to organize imports
+      uses: isort/isort-action@master
+    - name: Run black to check code formatting
+      uses: psf/black@stable
+

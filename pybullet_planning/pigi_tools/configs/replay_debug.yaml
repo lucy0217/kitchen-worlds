@@ -1,0 +1,58 @@
+## ---- data source
+task_name: ''
+
+## ----- NVIDIA
+given_path: null
+given_dir: null
+cases: null
+parallel: false
+skip_if_processed_recently: false
+check_time: 1674417578
+
+## ---- control
+preview_scene: false
+step_by_step: false
+action_by_action: false
+use_gym: true
+auto_play: true
+verbose: false
+
+## ---- visual
+#width: 1440
+#height: 1120
+width: 1280
+height: 720
+pybullet:
+  time_step: 0.01
+  fx: 600
+  ### ---- pigi kitchens
+  #camera_point: [8.5, 2.5, 3]
+  #target_point: [0, 2.5, 0]
+  ## ---- nvidia kitchens - this is for pybullet
+  camera_point: [8.5, 6.5, 3]
+  target_point: [0, 6.5, 0]
+
+gym:
+#  shape_json: '../databases/partnet_shapes.json'
+  shape_json: '../databases/world_shapes.json'
+  camera_kwargs: null
+  camera_movement: null
+  light_conf: null
+
+## ---- purposes
+check_collisions: false
+cfree_range: 0.1
+visualize_collisions: false
+evaluate_quality: false
+
+## ---- outputs
+save_jpg: true
+save_composed_jpg: false
+save_gif: false
+save_animation_json: false
+save_mp4: true
+save_segmented_mp4: false
+save_observation_mp4: false
+save_observation_pcd: false
+mp4_side_view: false
+mp4_top_view: false
