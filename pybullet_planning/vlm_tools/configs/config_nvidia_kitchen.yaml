@@ -5,7 +5,7 @@ debug: false
 
 ## ---------- language planning agent
 agent:
-  api_class_name: 'gpt4'  # 'claude3'
+  api_class_name: 'qwen'  # 'qwen' | 'gpt4' | 'claude3'
   llamp_planning_mode: 'sequence'  # 'sequence' | 'actions' | 'sequence-reprompt' | 'actions-reprompt'
   object_reducer: 'object-related;heuristic-movables;all-joints'
   debug_step: -1

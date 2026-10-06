@@ -10,7 +10,7 @@ Then run the following:
 
 ```shell
 conda activate kitchen
-pip install pddlgym anytree
+pip install pddlgym anytree tabulate
 ```
 
 ## Set up pretrained VLM APIs
@@ -29,6 +29,35 @@ cd vlm_tools; mkdir keys
 echo <openai_api_key> > keys/openai_api_key.txt
 echo <anthropic_api_key> > keys/anthropic_api_key.txt
 ```
+
+### Run a local Transformers VLM
+
+The default `config_nvidia_kitchen.yaml` uses a local OpenAI-compatible
+endpoint backed by Qwen3-VL. The GPT and Claude API clients remain available
+through `--vlm_type gpt4v` and `--vlm_type claude3`.
+
+Start the local server in a separate terminal:
+
+```shell
+conda activate qwen-vl
+cd ~/workspace/tapeout_2027/transformers
+python local_vlm_server.py \
+    --model-path ../../models/Qwen3-VL-4B-Instruct
+```
+
+The client defaults to `http://127.0.0.1:8000/v1/chat/completions`. These
+environment variables can select another compatible endpoint or model:
+
+```shell
+export LOCAL_VLM_URL=http://127.0.0.1:8000/v1/chat/completions
+export LOCAL_VLM_MODEL=Qwen/Qwen3-VL-4B-Instruct
+export LOCAL_VLM_TIMEOUT=600
+```
+
+Use `--vlm_type local` or `--vlm_type qwen` to explicitly select the local
+backend. A different Qwen checkpoint can be served without changing
+`kitchen-worlds`; restart `local_vlm_server.py` with its local model path and
+update `LOCAL_VLM_MODEL`.
 
 
 ## Run an example solving open-world kitchen problems

@@ -33,9 +33,9 @@ def get_vlm_tamp_agent_parser_given_config(conf):
     parser.add_argument('--load_llm_memory', type=str, default=None,
                         help='Path to a run directory that contains `llm_memory.json` file to speed up debugging')
 
-    ## Note: in order to use other model names in GPT or Claude family, need to modify `vlm_tools/vlm_api.py` then verify that prompts and parsing functions still work.
-    parser.add_argument('--vlm_type', type=str, choices=["gpt4v", "claude3"],
-                        help='Specifies the VLM APT class defined in vlm_tools.vlm_api')
+    parser.add_argument('--vlm_type', type=str, default=None,
+                        choices=["gpt4v", "claude3", "local", "qwen"],
+                        help='Overrides the VLM API class selected by the config file')
     return parser
 
 

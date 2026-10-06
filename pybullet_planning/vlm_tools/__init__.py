@@ -26,8 +26,8 @@ def modify_agent_args_for_vlm_tamp(args):
     else:
         args.load_llm_memory = None
     args.load_agent_state = None
-    # if args.vlm_type is not None:
-    #     args.api_class_name = args.vlm_type
+    if hasattr(args, 'vlm_type') and args.vlm_type is not None:
+        args.api_class_name = args.vlm_type
     return args
 
 

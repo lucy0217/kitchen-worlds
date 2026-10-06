@@ -335,6 +335,58 @@ class GPT4vApi(VLMApi):
         return contents
 
 
+class LocalVLMApi(VLMApi):
+    """Client for a locally hosted OpenAI-compatible vision-language model."""
+
+    name = 'Local VLM'
+
+    def __init__(self, **kwargs):
+        super(LocalVLMApi, self).__init__(**kwargs)
+        self.api_url = os.environ.get(
+            'LOCAL_VLM_URL', 'http://127.0.0.1:8000/v1/chat/completions')
+        self.model_name = os.environ.get(
+            'LOCAL_VLM_MODEL', 'Qwen/Qwen3-VL-4B-Instruct')
+        self.query_timeout = int(os.environ.get('LOCAL_VLM_TIMEOUT', '600'))
+
+    def _ask(self, prompt: str, image_path: str = "None", continue_chat: bool = True,
+             max_tokens: int = 1000, temperature: float = 0.0, n: int = 1, **kwargs):
+        content = [{"type": "text", "text": prompt}]
+        if image_path != "None" and image_path is not None:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{encode_image(image_path)}"
+                }
+            })
+            self.last_image_path = image_path
+
+        messages = copy.deepcopy(self.context) if continue_chat else []
+        messages.append({"role": "user", "content": content})
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "n": n,
+        }
+
+        response = requests.post(
+            self.api_url,
+            headers={"Content-Type": "application/json"},
+            json=payload,
+            timeout=self.query_timeout,
+        )
+        response.raise_for_status()
+        response = response.json()
+        if 'choices' not in response:
+            raise RuntimeError(f'Local VLM returned an invalid response: {response}')
+
+        answers = [choice['message'] for choice in response['choices']]
+        self.context.append({"role": "user", "content": prompt})
+        self.context.extend(answers)
+        return [answer['content'] for answer in answers]
+
+
 # ########################## FOR TESTING WHEN GPT-4V API is yet released ###############################
 #
 #

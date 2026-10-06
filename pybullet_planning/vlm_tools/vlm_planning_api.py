@@ -24,7 +24,7 @@ from world_builder.world_utils import get_camera_image, make_camera_collage, \
     SURFACE, SPACE, MOVABLE
 from world_builder.world import World
 
-from vlm_tools.vlm_api import GPT4vApi, Claude3Api
+from vlm_tools.vlm_api import GPT4vApi, Claude3Api, LocalVLMApi
 from vlm_tools.prompts_gpt4v import *
 # from vlm_tools.examples.prompts_playground import *
 from vlm_tools.visualize.viz_run_utils import output_html, launch_log_page, media_dir, content_dir
@@ -37,7 +37,10 @@ from vlm_tools.vlm_utils import plans_to_tree, rindex, export_tree_png, grow_bra
 
 
 def get_llamp_api(api_class_name):
-    if 'gpt' in api_class_name:
+    api_class_name = api_class_name.lower()
+    if any(name in api_class_name for name in ['local', 'qwen']):
+        return LocalVLMPlanningApi
+    elif 'gpt' in api_class_name:
         return GPT4PlanningApi
     elif 'claude' in api_class_name:
         return Claude3PlanningApi
@@ -730,6 +733,16 @@ class Claude3PlanningApi(LLAMPApi):
 
     def parse_lines_into_lists_fn(self, string: str, **kwargs):
         return parse_lines_into_lists_claude3(string, **kwargs)
+
+
+class LocalVLMPlanningApi(LLAMPApi):
+
+    def __init__(self, open_goal, vlm_kwargs=dict(), **kwargs):
+        super(LocalVLMPlanningApi, self).__init__(open_goal, **kwargs)
+        self.llm = LocalVLMApi(**vlm_kwargs)
+
+    def parse_lines_into_lists_fn(self, string: str, **kwargs):
+        return parse_lines_into_lists_gpt4(string, **kwargs)
 
 
 ###########################################################
