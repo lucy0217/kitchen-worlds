@@ -166,6 +166,13 @@ def reduce_by_object_all_joints(facts, objects=[], goals=[], world=None, verbose
                     if verbose:
                         print_debug(f'{title} skipping {elem} because it is isolated')
                     continue
+                ## streams look up the joint's body in world.BODY_TO_OBJECT, which no longer has bodies
+                ## removed by world.remove_bodies_from_planning()
+                if world is not None and elem[0] not in world.BODY_TO_OBJECT:
+                    joints_to_skip.append(elem)
+                    if verbose:
+                        print_debug(f'{title} skipping {elem} because its body is removed from planning')
+                    continue
                 joints_to_add.append(elem)
     if verbose:
         print_debug(f'{title} adding {joints_to_add}')
