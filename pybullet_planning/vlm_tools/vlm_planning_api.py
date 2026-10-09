@@ -57,9 +57,11 @@ class LLAMPApi(object):
         """
         planning_mode:
             sequence:           solve each subgoal in sequence
-            sequence-reprompt:  reprompt when failed
+            sequence-reprompt1: reprompt at most once when failed
+            sequence-reprompt:  reprompt at most twice when failed
             actions:            refining each action
-            actions-reprompt:   reprompt when failed
+            actions-reprompt1:  reprompt at most once when failed
+            actions-reprompt:   reprompt at most twice when failed
         image_mode:
             llm:        query with text only
             pybullet:   + image rendered from pybullet
@@ -87,7 +89,12 @@ class LLAMPApi(object):
 
         self.world = None  ## initiate during the first query
         self.body_to_english_names = None  ## dict of object (cat, body) to english name
-        self.allowed_num_reprompting = 1
+        self.allowed_num_reprompting = (
+            1 if planning_mode in ['sequence-reprompt1', 'actions-reprompt1'] else
+            2 if planning_mode in ['sequence-reprompt', 'actions-reprompt'] else 0
+        )
+        self.agent_memory['planning_mode'] = planning_mode
+        self.agent_memory['max_reprompts'] = self.allowed_num_reprompting
 
         ## initially in vlm-tamp/examples/, later reset by self.init_log_dir()
         self.log_dir = log_dir
@@ -423,7 +430,7 @@ class LLAMPApi(object):
                             chosen_index = last_junction_node.children.rfind(chosen_children)
 
         if failed_node or jump_to_reprompt:
-            reprompt = self.planning_mode.endswith('-reprompt') and len(self.agent_memory['replan_memory']) < 2
+            reprompt = len(self.agent_memory['replan_memory']) < self.allowed_num_reprompting
             if reprompt:
                 history, failure = self.get_action_history_and_failure(**kwargs)
                 history_content = include_history.format(actions=history, failure=failure)

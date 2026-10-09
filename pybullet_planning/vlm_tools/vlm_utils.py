@@ -364,9 +364,10 @@ def repair_facts(world, g, p, subgoal=None):
             else:
                 g[0] = p[0] = 'moved'
 
-        if len(set(container_types).intersection({'surface', 'space'})) > 0:
-            if len(obj.governing_joints) > 0:
-                joint = obj.governing_joints[0]
+        elif len(set(container_types).intersection({'surface', 'space'})) > 0:
+            governing_joints = getattr(obj, 'governing_joints', [])
+            if len(governing_joints) > 0:
+                joint = governing_joints[0]
             else:
                 joints = {j: world.get_english_name(j) for j in world.cat_to_bodies('door') if j[0] == obj.body}
                 ## find which joint has best matching name

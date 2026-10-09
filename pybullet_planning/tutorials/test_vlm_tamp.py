@@ -28,8 +28,10 @@ def get_vlm_tamp_agent_parser_given_config(conf):
                         help='Difficulty level of the task, which the scene builder function uses to determine how much movable and articulated obstacles to add')
     parser.add_argument('--dual_arm', action='store_true',
                         help='Whether to use dual arm or single arm of the PR2 robot')
-    parser.add_argument('--planning_mode', type=str, default='sequence', choices=['sequence', 'actions', 'sequence-reprompt', 'actions-reprompt'],
-                        help='Whether to use dual arm or single arm of the PR2 robot')
+    parser.add_argument('--planning_mode', type=str, default='sequence',
+                        choices=['sequence', 'actions', 'sequence-reprompt1', 'actions-reprompt1',
+                                 'sequence-reprompt', 'actions-reprompt'],
+                        help='Predict subgoals or actions; no suffix allows 0 reprompts, -reprompt1 allows 1, -reprompt allows 2')
     parser.add_argument('--load_llm_memory', type=str, default=None,
                         help='Path to a run directory that contains `llm_memory.json` file to speed up debugging')
 
