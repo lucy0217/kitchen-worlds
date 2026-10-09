@@ -270,6 +270,43 @@ class GPT4vApi(VLMApi):
         )
         self.model_name = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
         self.query_timeout = float(os.environ.get('OPENAI_TIMEOUT', '60'))
+        self.max_retries = int(os.environ.get('OPENAI_MAX_RETRIES', '3'))
+        self.retry_backoff = float(os.environ.get('OPENAI_RETRY_BACKOFF', '1'))
+
+        if self.max_retries < 0:
+            raise ValueError('OPENAI_MAX_RETRIES must be non-negative')
+        if self.retry_backoff < 0:
+            raise ValueError('OPENAI_RETRY_BACKOFF must be non-negative')
+
+    def _post_with_retries(self, headers, payload):
+        transient_errors = (
+            requests.exceptions.SSLError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        )
+
+        for retry_index in range(self.max_retries + 1):
+            try:
+                return requests.post(
+                    self.api_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=self.query_timeout,
+                )
+            except transient_errors as exc:
+                if retry_index >= self.max_retries:
+                    raise RuntimeError(
+                        f'VLM request to {self.api_url} failed after '
+                        f'{retry_index + 1} attempts: {exc}'
+                    ) from exc
+
+                delay = self.retry_backoff * (2 ** retry_index)
+                print(
+                    f'VLM request failed with {type(exc).__name__}; '
+                    f'retrying in {delay:g}s '
+                    f'({retry_index + 1}/{self.max_retries})'
+                )
+                time.sleep(delay)
 
     def _ask(self, prompt: str, image_path: str = "None", continue_chat: bool = True,
              max_tokens: int = 1000, temperature: float = 0.0, n: int = 1, **kwargs):
@@ -301,12 +338,7 @@ class GPT4vApi(VLMApi):
         }
 
         try:
-            response = requests.post(
-                self.api_url,
-                headers=headers,
-                json=payload,
-                timeout=self.query_timeout,
-            )
+            response = self._post_with_retries(headers, payload)
             response.raise_for_status()
             response = response.json()
         except (requests.RequestException, ValueError) as exc:

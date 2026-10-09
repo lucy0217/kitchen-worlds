@@ -41,7 +41,14 @@ export OPENAI_API_KEY='<your-new-api-key>'
 export OPENAI_BASE_URL='https://api.gate.ai/openai/v1'
 export OPENAI_MODEL='gpt-4o-mini'
 export OPENAI_TIMEOUT=60
+export OPENAI_MAX_RETRIES=3
+export OPENAI_RETRY_BACKOFF=1
 ```
+
+`OPENAI_MAX_RETRIES=3` allows three retries after the initial request for TLS,
+connection, and timeout failures. `OPENAI_RETRY_BACKOFF=1` waits 1, 2, and 4
+seconds between those retries. HTTP errors such as an invalid key or model are
+reported immediately.
 
 Do not commit the API key to this repository. If an API provider gives you a
 full Chat Completions endpoint instead of a base URL, set it directly with
@@ -97,6 +104,14 @@ To switch back to the 4B checkpoint, start the server with
 
 
 ## Run an example solving open-world kitchen problems
+
+The planning modes `sequence` / `actions` allow no reprompting,
+`sequence-reprompt1` / `actions-reprompt1` allow at most one reprompt,
+and `sequence-reprompt` / `actions-reprompt` allow at most two reprompts.
+For a single GPT run with `Nreprompt=1`, use
+`python tutorials/test_vlm_tamp.py --vlm_type gpt4v --planning_mode sequence-reprompt1`.
+Add `--dual_arm` to enable both arms. The configured limit is saved as
+`max_reprompts` in `agent_memory.json`; `time.json` records the number actually used.
 
 Ask GPT4v to break down a high-level goal to a sequence of subgoals, then give them to PDDLStream in sequence.
 
