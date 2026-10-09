@@ -2,8 +2,6 @@ import json
 
 import requests
 import copy
-import signal
-import sys
 import time
 from pprint import pprint, pformat
 import os
@@ -265,7 +263,13 @@ class GPT4vApi(VLMApi):
         super(GPT4vApi, self).__init__(**kwargs)
 
         self.api_key = self.load_api_key('openai_api_key.txt', 'OPENAI_API_KEY')
-        self.model_name = "gpt-4o-mini"  ## gpt-4o-mini | gpt-4o | gpt-4-vision-preview
+        base_url = os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+        self.api_url = os.environ.get(
+            'OPENAI_CHAT_COMPLETIONS_URL',
+            f"{base_url.rstrip('/')}/chat/completions",
+        )
+        self.model_name = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+        self.query_timeout = float(os.environ.get('OPENAI_TIMEOUT', '60'))
 
     def _ask(self, prompt: str, image_path: str = "None", continue_chat: bool = True,
              max_tokens: int = 1000, temperature: float = 0.0, n: int = 1, **kwargs):
@@ -296,27 +300,22 @@ class GPT4vApi(VLMApi):
             "n": n
         }
 
-        def timeout_handler(num, stack):
-            print(f"setting timeout_handler for {num}")
-            raise Exception("TIMEOUT")
-
-        gpt_query_timeout = 10
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(gpt_query_timeout)
-        import traceback
         try:
-            response = requests.post("https://api.openai.com/v1/chat/completions",
-                                     headers=headers, json=payload).json()
-        except Exception as ex:
-            traceback.print_exc()
-            print(f"\nTimed out GPT-query in {gpt_query_timeout} sec\n")
-            sys.exit()
-        finally:
-            signal.alarm(0)
+            response = requests.post(
+                self.api_url,
+                headers=headers,
+                json=payload,
+                timeout=self.query_timeout,
+            )
+            response.raise_for_status()
+            response = response.json()
+        except (requests.RequestException, ValueError) as exc:
+            raise RuntimeError(
+                f'VLM request to {self.api_url} failed: {exc}'
+            ) from exc
 
         if 'choices' not in response:
-            print('\n\nChatGPT response\n')
-            pprint(response)
+            raise RuntimeError(f'VLM returned an invalid response: {response}')
 
         answers = [ans['message'] for ans in response['choices']]
 
@@ -345,7 +344,7 @@ class LocalVLMApi(VLMApi):
         self.api_url = os.environ.get(
             'LOCAL_VLM_URL', 'http://127.0.0.1:8000/v1/chat/completions')
         self.model_name = os.environ.get(
-            'LOCAL_VLM_MODEL', 'Qwen/Qwen3-VL-4B-Instruct')
+            'LOCAL_VLM_MODEL', 'Qwen/Qwen3-VL-8B-Instruct')
         self.query_timeout = int(os.environ.get('LOCAL_VLM_TIMEOUT', '600'))
 
     def _ask(self, prompt: str, image_path: str = "None", continue_chat: bool = True,

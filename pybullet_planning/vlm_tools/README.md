@@ -30,6 +30,35 @@ echo <openai_api_key> > keys/openai_api_key.txt
 echo <anthropic_api_key> > keys/anthropic_api_key.txt
 ```
 
+### Use an OpenAI-compatible API
+
+The GPT client accepts an OpenAI-compatible base URL and defaults to
+`gpt-4o-mini`. For Gate.AI, set the credentials in the shell that launches the
+experiment:
+
+```shell
+export OPENAI_API_KEY='<your-new-api-key>'
+export OPENAI_BASE_URL='https://api.gate.ai/openai/v1'
+export OPENAI_MODEL='gpt-4o-mini'
+export OPENAI_TIMEOUT=60
+```
+
+Do not commit the API key to this repository. If an API provider gives you a
+full Chat Completions endpoint instead of a base URL, set it directly with
+`OPENAI_CHAT_COMPLETIONS_URL`.
+
+Select the GPT client when running the example because the default config uses
+the local Qwen backend:
+
+```shell
+cd pybullet_planning
+python tutorials/test_vlm_tamp.py \
+    --vlm_type gpt4v \
+    --open_goal "make chicken soup" \
+    --exp_subdir "test_gate_gpt4o_mini" \
+    --planning_mode "sequence"
+```
+
 ### Run a local Transformers VLM
 
 The default `config_nvidia_kitchen.yaml` uses a local OpenAI-compatible
@@ -40,9 +69,12 @@ Start the local server in a separate terminal:
 
 ```shell
 conda activate qwen-vl
+hf download Qwen/Qwen3-VL-8B-Instruct \
+    --local-dir ~/workspace/models/Qwen3-VL-8B-Instruct
+
 cd ~/workspace/tapeout_2027/transformers
 python local_vlm_server.py \
-    --model-path ../../models/Qwen3-VL-4B-Instruct
+    --model-path ../../models/Qwen3-VL-8B-Instruct
 ```
 
 The client defaults to `http://127.0.0.1:8000/v1/chat/completions`. These
@@ -50,7 +82,7 @@ environment variables can select another compatible endpoint or model:
 
 ```shell
 export LOCAL_VLM_URL=http://127.0.0.1:8000/v1/chat/completions
-export LOCAL_VLM_MODEL=Qwen/Qwen3-VL-4B-Instruct
+export LOCAL_VLM_MODEL=Qwen/Qwen3-VL-8B-Instruct
 export LOCAL_VLM_TIMEOUT=600
 ```
 
@@ -58,6 +90,10 @@ Use `--vlm_type local` or `--vlm_type qwen` to explicitly select the local
 backend. A different Qwen checkpoint can be served without changing
 `kitchen-worlds`; restart `local_vlm_server.py` with its local model path and
 update `LOCAL_VLM_MODEL`.
+
+To switch back to the 4B checkpoint, start the server with
+`--model-path ../../models/Qwen3-VL-4B-Instruct` and set
+`LOCAL_VLM_MODEL=Qwen/Qwen3-VL-4B-Instruct`.
 
 
 ## Run an example solving open-world kitchen problems
