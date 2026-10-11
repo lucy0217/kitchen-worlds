@@ -63,6 +63,13 @@ class LLAMPAgent(PDDLStreamAgent):
             obs_dir = join(self.exp_dir, 'log', media_dir)
             self.llamp_api.new_session(image_dir=obs_dir, cache_dir=self.exp_dir)
 
+            # Scene reconstruction may restore a cached seed. Start the trial's
+            # independent planning stream only after all initialization is done.
+            if getattr(args, 'planning_seed', None) is not None:
+                from pybullet_tools.utils import set_random_seed, set_numpy_seed
+                set_random_seed(args.planning_seed)
+                set_numpy_seed(args.planning_seed)
+
             state_dir = join(self.exp_dir, 'states')
             os.makedirs(state_dir)
 

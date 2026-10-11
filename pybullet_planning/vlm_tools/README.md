@@ -2,6 +2,78 @@
 
 This is a guide to run example scripts for paper "Guiding Long-Horizon Task and Motion Planning with Vision Language Models" by Yang, et al. See [project page](https://zt-yang.github.io/vlm-tamp-robot/) or [arXiv](http://arxiv.org/abs/2410.02193).
 
+## Paper experiment runner (GPT-4o-mini / local VLM)
+
+Run `tutorials/run_vlm_paper.py` from the **kitchen-worlds repository root**.
+This runner defaults to 2 sequencing methods × 3 reprompt budgets × 2 scene
+difficulties × 2 arm settings × 30 trials = **720 TAMP trials**.
+For each (method, difficulty, arm) condition it first generates **five independent
+VLM responses** on the same seeded initial scene (40 candidate plans in total).
+Responses are not forced to be distinct. Each trial samples one candidate uniformly
+with replacement. The three reprompt budgets share the initial pool and paired
+candidate selections / planning seeds, rather than generating 30 new initial plans.
+
+```bash
+conda activate kitchen
+source your_project_folder/gpt_api.sh
+
+# Five candidate plans + one TAMP trial: Easy, dual arm, subgoals, Nreprompt=1
+python pybullet_planning/tutorials/run_vlm_paper.py \
+  --output experiments/paper_smoke_new \
+  --methods sequence --difficulties 0 --arms dual --reprompts 1 --trials 1
+
+# Complete experiment: 40 candidates + 720 TAMP trials
+python pybullet_planning/tutorials/run_vlm_paper.py \
+  --output experiments/paper_gpt4o_mini
+```
+
+Use `--phase prepare` to generate only the candidate pools; `--phase evaluate`
+requires all five candidates for every selected condition. The default `--phase all`
+does both. Repeating the same command reuses completed jobs, including unsuccessful
+TAMP tasks. A crashed job stops the batch and is not silently discarded or counted
+as task failure; inspect its `worker.log` and use a new output directory for a rerun.
+`--methods`, `--difficulties`, `--arms`, `--reprompts`, and `--trials` select subsets.
+Each trial runs in a fresh subprocess; do not launch concurrent runners in the same
+checkout because the original planner also has shared scratch directories.
+
+For an already running local OpenAI-compatible vision server:
+
+```bash
+export LOCAL_VLM_URL=http://127.0.0.1:8000/v1/chat/completions
+python pybullet_planning/tutorials/run_vlm_paper.py \
+  --backend local --model Qwen/Qwen3-VL-8B-Instruct \
+  --output experiments/paper_qwen8b
+```
+
+Use the model ID accepted by your server. Models must support image input. Model
+selection never changes the prompt templates or TAMP settings. Local inference
+must be configured separately and is not started by this script.
+
+Protocol: temperature 0.2 for generation, translation and reprompting; diverse
+planning enabled; `max_plans=max_evaluation_plans=12`; no learned task-plan
+feasibility predictor; three object-reduction attempts per subproblem; action mode
+retains the existing skeleton constraint checker. The runner calls `run_agent`
+directly to avoid the legacy action-directory override to four skeletons.
+Scene reconstruction uses the saved scene seed, while TAMP starts a separate
+trial seed after initialization. Candidate sampling uses its own RNG.
+
+The opt-in paper scene includes the fork and drawer omitted by the reduced demo,
+opens the drawer in Easy, and randomizes initially open door angles slightly.
+**The Easy lid remains on the stove**, as explicitly deferred; the hard scene has
+the lid on the pot. Thus this is not an exact geometric reproduction of the paper.
+Existing per-subproblem time limits remain 10s downward / 30s evaluation / 60s
+stream and total planning; the paper excerpt does not specify those times.
+The demo's extra eight-minute whole-run cutoff is disabled for this runner;
+`--experiment-timeout SECONDS` can impose one explicitly. GUI defaults to off;
+use `--viewer` when desired. The existing demo script retains its defaults.
+
+Outputs: `protocol.json`, five `candidates/...` directories, and `trials/...`.
+Every job saves parameters and seeds in `job.json`, the full console in `worker.log`,
+and validated artifacts / metrics in `result.json`. `summary.csv` contains completed
+trials, with repository metrics `task_success`, `continuous_success_rate`, and
+`task_progress` preserved separately. A completed process does not imply task success.
+No API keys are stored in these configuration files.
+
 ## Set up dependencies
 
 First, follow the [main README in kitchen-worlds](https://github.com/Learning-and-Intelligent-Systems/kitchen-worlds) to install the dependencies.

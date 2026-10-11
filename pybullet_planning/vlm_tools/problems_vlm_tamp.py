@@ -40,7 +40,13 @@ def get_problem_dict_from_open_goal(world, objects, args, load_llm_memory=None, 
     img_dir = join(temp_dir, 'log', 'media')
     llamp_api_class = get_llamp_api(args.api_class_name)
     llamp_api = llamp_api_class(open_goal, planning_mode=planning_mode, load_memory=load_llm_memory, seed=args.seed,
-                                log_dir=log_dir, vlm_kwargs=dict(image_dir=img_dir))
+                                log_dir=log_dir, vlm_kwargs=dict(image_dir=img_dir,
+                                    cache_dir=getattr(args, 'vlm_cache_dir', join(temp_dir, 'cache'))))
+    llamp_api.temperature = getattr(args, 'vlm_temperature', None)
+    llamp_api.agent_memory.update({
+        'scene_seed': args.seed,
+        'planning_seed': getattr(args, 'planning_seed', None),
+    })
     problem_dict = {'english_goal': open_goal, 'llamp_api': llamp_api}
 
     subgoals = llamp_api.get_subgoals(world, objects=objects)

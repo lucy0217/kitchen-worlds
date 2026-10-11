@@ -66,16 +66,21 @@ def run_vlm_tamp_agent(problem_name='test_kitchen_chicken_soup', difficulty=0,
 
 
 def enumerate_exp_conditions(
-        problem_names=['test_kitchen_chicken_soup'],
-        planning_modes=['actions-reprompt', 'sequence-reprompt', 'sequence', 'actions'],
-        if_dual_arm=[True, False],
-        difficulties=[0, 1],
+        problem_names=('test_kitchen_chicken_soup',),
+        planning_modes=('actions-reprompt', 'sequence-reprompt', 'sequence', 'actions'),
+        if_dual_arm=(True, False),
+        difficulties=(0, 1),
         num_runs=10,
         max_num_data=None,
         get_subdir_fn=None
     ):
     line = '-' * 20
 
+    # Shuffle local copies so callers' lists (and the defaults) are not mutated.
+    problem_names = list(problem_names)
+    difficulties = list(difficulties)
+    if_dual_arm = list(if_dual_arm)
+    planning_modes = list(planning_modes)
     random.shuffle(problem_names)
     random.shuffle(difficulties)
     random.shuffle(if_dual_arm)
@@ -118,15 +123,42 @@ def run_vlm_recipe_generation(viewer=False, **kwargs):
                            llamp_planning_mode=planning_mode, dual_arm=dual_arm, exp_subdir=exp_subdir)
 
 
-def run_vlm_tamp_experiments(**kwargs):
+def run_vlm_tamp_experiments(
+        problem_names=('test_kitchen_chicken_soup',),
+        planning_modes=('actions-reprompt', 'sequence-reprompt', 'sequence', 'actions'),
+        if_dual_arm=(True, False),
+        difficulties=(0, 1),
+        num_runs=10,
+        max_num_data=None,
+        **run_kwargs
+    ):
+    """Run a batch while keeping scheduling options out of each trial's args.
+
+    ``run_kwargs`` contains only options for ``run_vlm_tamp_experiment`` /
+    ``run_agent``, such as ``api_class_name``, ``vlm_type``, and ``viewer``.
+    """
 
     def get_subdir_fn(problem_name, difficulty, dual_arm, planning_mode):
         return get_subdir_name(planning_mode=planning_mode, dual_arm=dual_arm, mode='eval',
                                version=f'v{difficulty}', problem_name=problem_name)
 
-    for problem_name, difficulty, dual_arm, planning_mode in enumerate_exp_conditions(get_subdir_fn=get_subdir_fn, **kwargs):
-        run_vlm_tamp_experiment(planning_mode=planning_mode, dual_arm=dual_arm,
-                                difficulty=difficulty, serve_page=False, **kwargs)
+    conditions = enumerate_exp_conditions(
+        problem_names=problem_names,
+        planning_modes=planning_modes,
+        if_dual_arm=if_dual_arm,
+        difficulties=difficulties,
+        num_runs=num_runs,
+        max_num_data=max_num_data,
+        get_subdir_fn=get_subdir_fn,
+    )
+    trial_kwargs = dict(run_kwargs)
+    trial_kwargs.setdefault('serve_page', False)
+    for problem_name, difficulty, dual_arm, planning_mode in conditions:
+        run_vlm_tamp_experiment(problem_name=problem_name,
+                                planning_mode=planning_mode,
+                                dual_arm=dual_arm,
+                                difficulty=difficulty,
+                                **trial_kwargs)
 
 
 def run_vlm_tamp_experiment(problem_name='test_kitchen_chicken_soup', difficulty=0,

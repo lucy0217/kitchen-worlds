@@ -115,6 +115,8 @@ class LLAMPApi(object):
         assert NotImplementedError
 
     def ask(self, prompt: str, **kwargs):
+        if getattr(self, 'temperature', None) is not None:
+            kwargs['temperature'] = self.temperature
         return self.llm.ask(prompt, **kwargs)
 
     ##############################################################################

@@ -147,8 +147,9 @@ def run_agent(agent_class=HierarchicalAgent, config='config_dev.yaml', config_ro
                 evolve_processes(state, **evolve_kwargs)
             myprint(f'\n\nsaved mp4 to {mp4_path}\n\n')
         else:
-            max_time = 8 * 60
-            with timeout(duration=max_time):
+            from contextlib import nullcontext
+            max_time = getattr(args, 'experiment_timeout', 8 * 60)
+            with (timeout(duration=max_time) if max_time else nullcontext()):
                 evolve_processes(state, **evolve_kwargs)
 
         ## failed

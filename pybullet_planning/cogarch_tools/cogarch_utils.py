@@ -365,11 +365,18 @@ def reorg_output_dirs(exp_name, output_dir, log_failures=False):
         # os.remove(join(dirname(output_dir), 'tmp'))
 
     ## move planning-related files
-    visualization_dir = join(dirname(__file__), 'visualizations')
-    if log_failures and isdir(visualization_dir):
-        logs = [f for f in listdir(visualization_dir) if f.startswith('log') and f.endswith('.json')]
-        for log_file in logs:
-            shutil.move(join(visualization_dir, log_file), join(results_dir, log_file))
+    # pddlstream.algorithms.visualization writes relative to the process cwd.
+    # Keep the historical module-relative location as a fallback for older runs.
+    visualization_dirs = [join(os.getcwd(), 'visualizations'),
+                          join(dirname(__file__), 'visualizations')]
+    if log_failures:
+        for visualization_dir in visualization_dirs:
+            if not isdir(visualization_dir):
+                continue
+            logs = [f for f in listdir(visualization_dir)
+                    if f.startswith('log') and f.endswith('.json')]
+            for log_file in logs:
+                shutil.move(join(visualization_dir, log_file), join(results_dir, log_file))
     print(f"given_path: '{results_dir}'")
 
 
