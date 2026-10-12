@@ -1,3 +1,4 @@
+from pddlstream.tamp_profile import attempt, timed
 from cogarch_tools.processes.pddlstream_agent import *
 
 from pybullet_tools.logging_utils import print_heading, get_success_rate_string, print_debug, print_green
@@ -153,6 +154,7 @@ class LLAMPAgent(PDDLStreamAgent):
         self.object_reducers = [initialize_object_reducer(o) for o in self.object_reducer_names]
         return exp_name
 
+    @attempt
     def replan(self, observation, smaller_world=None, **kwargs):
         """ make new plans given a pddlstream_probelm """
 
@@ -178,6 +180,7 @@ class LLAMPAgent(PDDLStreamAgent):
 
         return self.plan
 
+    @timed('phase.observation_logging')
     def _replan_preprocess(self, observation):
 
         ## before each planning run, log the current observation and subgoal
@@ -206,6 +209,7 @@ class LLAMPAgent(PDDLStreamAgent):
             # if len(to_del) > 0:
             #     self.pddlstream_problem = self._modify_init(to_del=to_del)
 
+    @timed('phase.result_logging')
     def _replan_postprocess(self, goal=None, status=None, smaller_world=None):
         """ after each planning run, log the planning result """
         title = '[llamp_agent._replan_postprocess]\t'

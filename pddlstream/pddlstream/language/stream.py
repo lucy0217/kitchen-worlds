@@ -1,3 +1,4 @@
+from pddlstream.tamp_profile import stream_call
 import time
 from collections import Counter
 try:
@@ -316,6 +317,7 @@ class StreamInstance(Instance):
                 self.get_iteration(), self.external.name, str_from_object(self.get_input_values()),
                 new_facts, len(new_facts)))
 
+    @stream_call
     def next_results(self, verbose=False, **kwargs):
         assert not self.enumerated
         start_time = time.time()

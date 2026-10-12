@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+from pddlstream.tamp_profile import timed
 import time
 from collections import namedtuple
 try:
@@ -467,6 +468,7 @@ class SkeletonQueue(Sized):
                 add_certified(self.evaluations, result, **kwargs) # TODO: should special have a complexity of INF?
         # TODO: AssertionError: Could not find instantiation for numeric expression: dist
 
+    @timed('solver.refinement_queue')
     def process(self, complexity_limit, max_time=0, accelerate=False): # stream_plan, action_plan, cost,
         start_time = time.time()
         # if is_plan(stream_plan):

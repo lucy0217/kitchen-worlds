@@ -1,3 +1,4 @@
+from pddlstream.tamp_profile import stream_call
 import time
 
 from pddlstream.language.conversion import substitute_expression, list_from_conjunction, str_from_head
@@ -91,6 +92,7 @@ class FunctionInstance(Instance):
             raise ValueError('Function [{}] produced a negative value [{}]'.format(self.external.name, value))
         self.history.append(self.external.codomain(value))
         return self.value
+    @stream_call
     def next_results(self, verbose=False, **kwargs):
         assert not self.enumerated
         start_time = time.time()

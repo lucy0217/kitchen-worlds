@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+from pddlstream.tamp_profile import timed
 import time
 
 from collections import Counter
@@ -210,6 +211,7 @@ def hierarchical_plan_streams(evaluations, externals, results, optimistic_solve_
     return hierarchical_plan_streams(evaluations, externals, next_results, optimistic_solve_fn, complexity_limit,
                                      new_depth, next_constraints, **effort_args)
 
+@timed('solver.sequencing')
 def iterative_plan_streams(all_evaluations, externals, optimistic_solve_fn, complexity_limit, save_streams_txt=False,
                            **effort_args):
     # Previously didn't have unique optimistic objects that could be constructed at arbitrary depths

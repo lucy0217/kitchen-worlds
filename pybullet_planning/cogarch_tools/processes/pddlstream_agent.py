@@ -1,5 +1,7 @@
 from __future__ import print_function
 
+from pddlstream.tamp_profile import timed
+from pddlstream.tamp_profile import attempt
 import copy
 import shutil
 import os
@@ -254,6 +256,7 @@ class PDDLStreamAgent(MotionAgent):
         self.last_added_facts = added
         self.last_deled_facts = deled
 
+    @timed('phase.object_reduction')
     def _heuristic_reduce_pddlstream_problem(self):
         """ too many streams make planning slow, remove streams like `get-joint-position-closed` """
         return heuristic_modify_stream(self.pddlstream_problem, self.world)
@@ -264,6 +267,7 @@ class PDDLStreamAgent(MotionAgent):
         time_log.update(dict(kwargs))
         self.record_time(time_log)
 
+    @attempt
     def replan(self, observation, pddlstream_problem=None, debug_just_fail=False, **kwargs):
         """ make new plans given a pddlstream_problem """
         if pddlstream_problem is None:
@@ -592,6 +596,7 @@ class PDDLStreamAgent(MotionAgent):
 
     ## ----------------------------------------------------------------------------------
 
+    @timed('phase.grounding')
     def _check_subgoals_grounding(self, pddlstream_problem):
         """ remove all continuous variables from the domain pddl, just do task planning """
         title = '[pddlstream_agent._check_subgoals_grounding]'

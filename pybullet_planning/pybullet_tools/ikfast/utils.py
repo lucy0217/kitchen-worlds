@@ -1,3 +1,4 @@
+from pddlstream.tamp_profile import timed
 import random
 from collections import namedtuple
 import numpy as np
@@ -20,6 +21,7 @@ def compute_forward_kinematics(fk_fn, conf):
     return pos, quat
 
 
+@timed('kernel.ik.ikfast_solver')
 def compute_inverse_kinematics(ik_fn, pose, sampled=[]):
     pos = point_from_pose(pose)
     rot = matrix_from_quat(quat_from_pose(pose)).tolist()

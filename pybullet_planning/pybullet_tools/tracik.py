@@ -1,3 +1,4 @@
+from pddlstream.tamp_profile import timed
 import math
 import os.path
 
@@ -119,6 +120,7 @@ class IKSolver(object):
     def sample_conf(self):
         return self.random_generator.uniform(*self.joint_limits)
 
+    @timed('kernel.ik.tracik')
     def solve(self, tool_pose, seed_conf=None, pos_tolerance=1e-5,
               ori_tolerance=math.radians(5e-2), verbose=False):
         import time

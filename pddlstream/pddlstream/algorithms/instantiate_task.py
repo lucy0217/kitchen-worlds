@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+from pddlstream.tamp_profile import timed
 import os
 from collections import namedtuple, defaultdict, deque, Counter
 from time import time
@@ -170,6 +171,7 @@ def dump_instantiated(instantiated):
         str_from_object(Counter(action.action.name for action in instantiated.actions)),
         str_from_object(Counter(axiom.axiom.name for axiom in instantiated.axioms))))
 
+@timed('solver.instantiate')
 def instantiate_task(task, check_infeasible=True, use_fd=FD_INSTANTIATE, **kwargs):
     start_time = time()
     print()
@@ -197,6 +199,7 @@ def instantiate_task(task, check_infeasible=True, use_fd=FD_INSTANTIATE, **kwarg
 
 ##################################################
 
+@timed('solver.sas_translate')
 def sas_from_instantiated(instantiated_task):
     import timers
     import fact_groups

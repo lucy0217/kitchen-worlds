@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+from pddlstream.tamp_profile import timed
 from pybullet_tools.utils import invert, get_all_links, get_name, set_pose, get_link_pose, is_placement, \
     pairwise_collision, set_joint_positions, get_joint_positions, sample_placement, get_pose, waypoints_from_path, \
     unit_quat, plan_base_motion, plan_joint_motion, base_values_from_pose, pose_from_base_values, \
@@ -591,6 +592,7 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
             #    return
 
 
+@timed('kernel.ik.approach')
 def solve_approach_ik(arm, obj, pose_value, grasp, base_conf,
                       world, robot, custom_limits, obstacles_here, ignored_pairs_here,
                       resolution=DEFAULT_RESOLUTION, attachments={}, title='solve_approach_ik',

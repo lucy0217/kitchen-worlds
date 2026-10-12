@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+from pddlstream.tamp_profile import timed
 import copy
 import sys
 import time
@@ -101,6 +102,7 @@ def set_all_opt_gen_fn(externals, unique=None, verbose=False):
 #     def add_plan(self, ):
 #         pass
 
+@timed('solver.refinement')
 def satisfy_optimistic_plan(store, domain, opt_solutions, use_feedback=False, use_contexts=False, max_time=10):
     # TODO: create a new store
     # TODO: could pass domain=None
@@ -146,6 +148,7 @@ def satisfy_optimistic_plan(store, domain, opt_solutions, use_feedback=False, us
 ##################################################
 
 
+@timed('solver.focused')
 def solve_abstract(problem, constraints=PlanConstraints(), stream_info={},
                    unique_optimistic=None, use_feedback=True, replan_actions=set(),
                    unit_costs=False, success_cost=INF,

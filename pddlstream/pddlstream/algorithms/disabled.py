@@ -1,3 +1,4 @@
+from pddlstream.tamp_profile import timed
 import time
 
 from pddlstream.algorithms.common import add_facts, add_certified, is_instance_ready, UNKNOWN_EVALUATION
@@ -75,6 +76,7 @@ def process_instance(store, domain, instance, disable=False, **kwargs):
 
 ##################################################
 
+@timed('solver.refinement_process')
 def process_stream_plan(store, domain, disabled, stream_plan, action_plan, cost,
                         bind=True, max_failures=0):
     # Bad old implementation of this method

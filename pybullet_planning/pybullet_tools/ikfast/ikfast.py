@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+from pddlstream.tamp_profile import timed
 import importlib
 import time
 import numpy as np
@@ -132,6 +133,7 @@ def ikfast_forward_kinematics(robot, ikfast_info, tool_link, conf=None, use_ikfa
 
 ##################################################
 
+@timed('kernel.ik.ikfast_candidates')
 def ikfast_inverse_kinematics(robot, ikfast_info, tool_link, world_from_target,
                               fixed_joints=[], max_attempts=INF, max_time=INF,
                               norm=INF, max_distance=INF, **kwargs):

@@ -1,3 +1,4 @@
+from pddlstream.tamp_profile import timed
 from collections import Counter
 
 from pddlstream.algorithms.common import evaluations_from_init, SOLUTIONS
@@ -73,6 +74,7 @@ def reset_globals():
     RULES[:] = []
     SOLUTIONS[:] = []
 
+@timed('solver.parse')
 def parse_problem(problem, stream_info={}, constraints=None, unit_costs=False, unit_efforts=False):
     # TODO: just return the problem if already written programmatically
     #reset_globals() # Prevents use of satisfaction.py

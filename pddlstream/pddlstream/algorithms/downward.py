@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+from pddlstream.tamp_profile import span, timed
 import os
 import re
 import sys
@@ -389,6 +390,7 @@ def normalize_domain_goal(domain, goal_exp):
     normalize.normalize(task)
     return task
 
+@timed('solver.fd_search_wrapper')
 def run_search(temp_dir, planner=DEFAULT_PLANNER, max_planner_time=DEFAULT_MAX_TIME,
                max_cost=INF, debug=False):
     """
@@ -435,8 +437,9 @@ def run_search(temp_dir, planner=DEFAULT_PLANNER, max_planner_time=DEFAULT_MAX_T
 
     # raise RuntimeError
     # print('\n\n\n\ndownward command:', command, '\n\n\n\n')
-    proc = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True, cwd=None, close_fds=True)
-    output, error = proc.communicate()
+    with span('solver.fd_subprocess'):
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True, cwd=None, close_fds=True)
+        output, error = proc.communicate()
 
     if USE_FORBID:
         for filename in os.listdir(FORBID_PATH):

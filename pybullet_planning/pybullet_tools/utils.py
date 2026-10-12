@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+from pddlstream.tamp_profile import timed
 import collections
 import colorsys
 import inspect
@@ -1954,6 +1955,7 @@ def get_euler(body):
 def get_base_values(body):
     return base_values_from_pose(get_pose(body))
 
+@timed('kernel.state.set_pose')
 def set_pose(body, pose):
     if len(pose) != 2:
         print('utils.set_pose()')
@@ -2174,6 +2176,7 @@ def set_joint_states(body, joints, positions, velocities):
             continue
         set_joint_state(body, joint, position, velocity)
 
+@timed('kernel.state.set_joints')
 def set_joint_positions(body, joints, values):
     for joint, value in safe_zip(joints, values):
         set_joint_position(body, joint, value)
@@ -3644,6 +3647,7 @@ def draw_collision_info(collision_info, **kwargs):
         handles.extend(draw_point(point, **kwargs))
     return handles
 
+@timed('kernel.collision.closest_points')
 def get_closest_points(body1, body2, link1=None, link2=None, max_distance=MAX_DISTANCE, use_aabb=False):
     if use_aabb and not aabb_overlap(get_buffered_aabb(body1, link1, max_distance=max_distance/2.),
                                      get_buffered_aabb(body2, link2, max_distance=max_distance/2.)):
@@ -3709,6 +3713,7 @@ def body_collision(body1, body2, **kwargs):
 
     return len(results) != 0
 
+@timed('kernel.collision.pairwise')
 def pairwise_collision(body1, body2, **kwargs):
     if isinstance(body1, tuple) or isinstance(body2, tuple):
         body1, links1 = expand_links(body1)
@@ -4010,6 +4015,7 @@ def get_collision_fn(body, joints, obstacles=[], attachments=[], self_collisions
     limits_fn = get_limits_fn(body, joints, custom_limits=custom_limits, verbose=verbose)
     # TODO: sort bodies by bounding box size
 
+    @timed('kernel.collision.configuration')
     def collision_fn(q, verbose=False):
         # from pybullet_tools.camera_utils import set_camera_target_body
         ## set_camera_target_body(body, dx=0.2, dy=-0.2, dz=0.2)
@@ -4115,6 +4121,7 @@ def interpolate_joint_waypoints(body, joints, waypoints, resolutions=None,
             path.append(q) # TODO: could instead yield
     return path
 
+@timed('kernel.motion.waypoints')
 def plan_waypoints_joint_motion(body, joints, waypoints, start_conf=None, obstacles=[], attachments=[],
                                 self_collisions=True, disabled_collisions=set(),
                                 resolutions=None, custom_limits={}, max_distance=MAX_DISTANCE,
@@ -4156,6 +4163,7 @@ def check_initial_end(start_conf, end_conf, collision_fn, verbose=False, debug=F
     return True
 
 
+@timed('kernel.motion.joint')
 def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
                       self_collisions=True, disabled_collisions=set(), ignored_pairs=[],
                       weights=None, resolutions=None, max_distance=MAX_DISTANCE,
@@ -4346,6 +4354,7 @@ def plan_base_motion(body, end_conf, base_limits, obstacles=[], direct=False,
             yield q
             # TODO: should wrap these joints
 
+    @timed('kernel.collision.configuration')
     def collision_fn(q, verbose=True):
         # TODO: update this function
         set_base_values(body, q)
@@ -4915,6 +4924,7 @@ def is_pose_close(pose, target_pose, pos_tolerance=1e-3, ori_tolerance=1e-3*np.p
         return False
     return True
 
+@timed('kernel.ik.pybullet')
 def inverse_kinematics(robot, link, target_pose, max_iterations=200, max_time=INF, custom_limits={}, **kwargs):
     start_time = time.time()
     movable_joints = get_movable_joints(robot)
