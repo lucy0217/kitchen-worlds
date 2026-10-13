@@ -63,7 +63,7 @@ def reduce_facts_given_objects(facts, objects=[], goals=[], world=None, verbose=
     objects_in_goals = []
     for goal in goals:
         for elem in goal[1:]:
-            if isinstance(elem, int) and elem in objects:
+            if isinstance(elem, (int, tuple)):
                 objects_in_goals.append(elem)
 
     ## find relevant supporting surfaces of goal objects
@@ -82,7 +82,13 @@ def reduce_facts_given_objects(facts, objects=[], goals=[], world=None, verbose=
         if fact[0] in ['ungraspbconf']:
             removed = True
         elif fact[0] in dynamic_preds:
-            dynamic_variables.append(fact[-1])
+            found_objects = [elem for elem in fact[1:] if isinstance(elem, int) or isinstance(elem, tuple)]
+            goal_mentioned_objects = [elem for elem in found_objects if elem in objects_in_goals]
+            irrelevant_objects = [elem for elem in found_objects if elem not in objects]
+            if len(goal_mentioned_objects) == 0 and len(irrelevant_objects) > 0:
+                removed = True
+            else:
+                dynamic_variables.append(fact[-1])
         elif fact[0] in dynamic_preds_potential:
             removed = True
             dynamic_facts_potential.append(fact)
@@ -216,7 +222,4 @@ def reduce_by_objects_heuristic_movables(facts, objects=[], goals=[], world=None
             objects.extend(add_surfaces)
 
     return reduce_facts_given_objects(facts, objects=objects, goals=goals)
-
-
-
 

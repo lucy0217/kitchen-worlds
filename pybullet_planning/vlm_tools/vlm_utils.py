@@ -316,7 +316,8 @@ def repair_facts(world, g, p, subgoal=None):
     #         print('[repair_facts]')
 
     ## TODO: hack for correcting VLM translation mistakes
-    if subgoal in ['in(chicken leg, fridge shelf)', 'in(salt shaker, cabinet)', 'in(pepper shaker, cabinet)']:
+    # if subgoal in ['in(chicken leg, fridge shelf)', 'in(salt shaker, cabinet)', 'in(pepper shaker, cabinet)']:
+    if subgoal in ['in(chicken leg, fridge shelf)']:
         pred = 'picked'
         g = [pred, g[1]]
         p = [pred, p[1]]
@@ -419,6 +420,19 @@ def parse_lines_into_lists_claude3(string, n=1):
 
 def parse_lines_into_lists_gpt4(string, n=1, planning_mode='sequence'):
     """ given a list of lines (subgoal_english or subgoal_strings) """
+    # Models may return a single-line Python/JSON list instead of one item per line.
+    import ast
+    candidate = string.strip()
+    if candidate.startswith('```'):
+        candidate = '\n'.join(candidate.splitlines()[1:]).rsplit('```', 1)[0].strip()
+    if n == 1 and candidate.startswith('[') and candidate.endswith(']'):
+        try:
+            parsed = ast.literal_eval(candidate)
+        except (ValueError, SyntaxError):
+            pass
+        else:
+            if isinstance(parsed, list) and all(isinstance(item, str) for item in parsed):
+                return [parsed]
 
     def filter(lst):
         return [strip(s) for s in lst if 'plaintext' not in s and '```' not in s and 'python' not in s]

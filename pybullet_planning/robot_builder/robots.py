@@ -137,7 +137,8 @@ class RobotAPI(Robot):
         return tool_from_root
 
     def get_approach_vector(self, arm, grasp_type, scale=1):
-        return tuple(scale * APPROACH_DISTANCE / 2 * get_unit_vector([0, 0, -1]))
+        # return tuple(scale * APPROACH_DISTANCE / 2 * get_unit_vector([0, 0, -1]))
+        return tuple(scale * APPROACH_DISTANCE / 2 * get_unit_vector([0, 0, 1]))
 
     def get_approach_pose(self, approach_vector, g):
         return multiply(g, (approach_vector, unit_quat()))
@@ -735,7 +736,13 @@ class MobileRobot(RobotAPI):
                 self.set_joint_positions(arm_joints, arm_conf)
                 if debug:
                     time.sleep(0.5)
-                if not collided(self.body, tag='robot.TracIK', **kwargs):
+                ik_collision = collided(self.body, tag='robot.TracIK', **kwargs)
+                if ik_collision and verbose:
+                    print(title, f'found raw ik but failed cfree check; collision details follow')
+                    collided(self.body, obstacles, world=self.world, articulated=False, verbose=True,
+                             tag='robot.IK collision detail', visualize=False, min_num_pts=0,
+                             use_aabb=True, log_collisions=False)
+                if not ik_collision:
                     result = arm_conf
                     if verbose:
                         print(title, f'found cfree ik for arm in {round(time.time() - start_time, 2)} seconds')

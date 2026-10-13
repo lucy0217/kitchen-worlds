@@ -39,7 +39,7 @@ def modify_world_builder_args_for_vlm_tamp(args, world_builder_args):
 def run_vlm_tamp_with_argparse(problem_name='test_kitchen_chicken_soup', world_builder_args=dict(), **kwargs):
     problem = vlm_tamp_problem_fn_from_name(problem_name)
     domain_kwargs = dict(agent_class=LLAMPAgent, config='config_nvidia_kitchen.yaml', config_root=VLM_AGENT_CONFIG_ROOT,
-                         use_learned_ir=True, serve_page=True)
+                         use_learned_ir=False, serve_page=False)
 
     if 'exp_subdir' in kwargs and 'actions' in kwargs['exp_subdir']:
         kwargs.update({k: 4 for k in ['max_plans', 'max_evaluation_plans']})

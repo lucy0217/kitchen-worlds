@@ -17,7 +17,7 @@ from pybullet_tools.utils import invert, get_all_links, get_name, set_pose, get_
     RED, remove_body, aabb2d_from_aabb, aabb_overlap, aabb_contains_point, get_aabb_center, get_link_name, \
     get_links, check_initial_end, get_collision_fn, BLUE, WHITE, TAN, GREY, YELLOW, aabb_contains_aabb
 
-from pybullet_tools.bullet_utils import multiply, has_tracik, visualize_bconf
+from pybullet_tools.bullet_utils import multiply, has_tracik, visualize_bconf, nice
 from pybullet_tools.camera_utils import set_camera_target_body
 from pybullet_tools.pose_utils import bconf_to_pose, pose_to_bconf, add_pose, sample_new_bconf
 from pybullet_tools.grasp_utils import check_cfree_gripper, add_to_rc2oc
@@ -869,10 +869,43 @@ def get_base_motion_gen(problem, custom_limits={}, collisions=True, teleport=Fal
     obstacles = problem.fixed if collisions else []
     ignored_pairs = problem.world.ignored_pairs
 
+    def object_categories(body):
+        body_info = robot.world.body_to_object(body) if hasattr(robot.world, 'body_to_object') else None
+        return set(getattr(body_info, 'categories', []) or [])
+
+    def base_motion_contact_bodies(child):
+        contacts = set()
+        body_info = robot.world.body_to_object(child) if hasattr(robot.world, 'body_to_object') else None
+        supporting_surface = getattr(body_info, 'supporting_surface', None)
+        support_body = getattr(supporting_surface, 'body', None)
+        if isinstance(support_body, int):
+            contacts.add(support_body)
+        pybullet_name = getattr(supporting_surface, 'pybullet_name', None)
+        if isinstance(pybullet_name, tuple) and isinstance(pybullet_name[0], int):
+            contacts.add(pybullet_name[0])
+        elif isinstance(pybullet_name, int):
+            contacts.add(pybullet_name)
+        if 'braiserlid' in object_categories(child):
+            contacts.update([3, 6])
+            if hasattr(robot.world, 'cat_to_bodies'):
+                contacts.update(robot.world.cat_to_bodies('counter'))
+                contacts.update(robot.world.cat_to_bodies('oven'))
+        return contacts
+
     def fn(bq1, bq2, fluents=[]):
         obstacles_here = copy.deepcopy(obstacles)
         saver.restore()
         # print(f'get_base_motion_gen({nice(bq1.values)}, {nice(bq2.values)})')
+        lid_pick_diag_bases = {
+            (1.25, 7.55, 0.3, 2.8),
+            (1.014, 7.723, 0.297, -2.795),
+            (1.135, 7.902, 0.324, -2.271),
+            (1.261, 8.147, 0.465, 2.124),
+        }
+        lid_pick_diag = tuple(round(value, 3) for value in bq2.values) in lid_pick_diag_bases
+        if lid_pick_diag:
+            print(f'LID_PICK_DIAG base-motion-input from={nice(bq1.values)} '
+                  f'to={nice(bq2.values)} fluents={fluents}')
         attachments = process_motion_fluents(fluents, robot, verbose=False)
         if len(attachments) > 0:
             # print('get_base_motion_gen, attachments', attachments)
@@ -882,11 +915,10 @@ def get_base_motion_gen(problem, custom_limits={}, collisions=True, teleport=Fal
         ignored_pairs_here = copy.deepcopy(ignored_pairs)
         for a in attachments:
             if a.parent == robot:
-                surface = robot.world.body_to_object(1).supporting_surface
-                if surface is not None:
-                    pair = (surface.body, a.child)
+                for contact_body in base_motion_contact_bodies(a.child):
+                    pair = (contact_body, a.child)
                     if pair not in ignored_pairs_here:
-                        ignored_pairs_here.extend([pair, (a.child, surface.body)])
+                        ignored_pairs_here.extend([pair, (a.child, contact_body)])
 
         bq1.assign()
         # TODO: did base motion planning fail?
@@ -919,6 +951,9 @@ def get_base_motion_gen(problem, custom_limits={}, collisions=True, teleport=Fal
             bq1.assign()
 
         if raw_path is None:
+            if lid_pick_diag:
+                print(f'LID_PICK_DIAG base-motion-result from={nice(bq1.values)} '
+                      f'to={nice(bq2.values)} success=False obstacles={obstacles_here}')
             print(f'Failed motion plan (with world config)! obstacles_here = {obstacles_here}, obstacles = {obstacles}')
             if debug:
                 for i, bq in enumerate([bq1, bq2]):
@@ -927,6 +962,9 @@ def get_base_motion_gen(problem, custom_limits={}, collisions=True, teleport=Fal
                     wait_unlocked()
             return None
         path = [Conf(robot, bq2.joints, q) for q in raw_path]
+        if lid_pick_diag:
+            print(f'LID_PICK_DIAG base-motion-result from={nice(bq1.values)} '
+                  f'to={nice(bq2.values)} success=True path_len={len(path)}')
         bt = Trajectory(path)
         cmd = Commands(State(), savers=[BodySaver(robot.body)], commands=[bt])
         return (cmd,)
@@ -967,5 +1005,3 @@ def get_cfree_btraj_pose_test(robot, collisions=True, verbose=True):
         # TODO: just check collisions with moving links
         return True
     return test
-
-

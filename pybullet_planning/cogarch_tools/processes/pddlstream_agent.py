@@ -12,7 +12,9 @@ import time
 import json
 import csv
 import pickle
+import uuid
 from collections import defaultdict
+from itertools import product
 from os.path import join
 import sys
 
@@ -292,6 +294,7 @@ class PDDLStreamAgent(MotionAgent):
             self.plan, env, knowledge, time_log, preimage = self.solve_pddlstream(
                 pddlstream_problem, observation.state, domain_pddl=self.domain_pddl,
                 domain_modifier=self.domain_modifier, **self.pddlstream_kwargs, **kwargs)  ## observation.objects
+            self._archive_stream_failures()
             self.evaluations, self.goal_exp, self.domain, _ = knowledge
 
         self.pddlstream_kwargs.update({'skeleton': None, 'subgoals': None})
@@ -330,6 +333,20 @@ class PDDLStreamAgent(MotionAgent):
             self._replan_postprocess(env, preimage)
 
         return self.plan
+
+    def _archive_stream_failures(self):
+        """Preserve each solve's stream log before the next solve resets it."""
+        if not self.pddlstream_kwargs.get('log_failures', False):
+            return
+        from pddlstream.algorithms.visualization import VISUALIZATIONS_DIR
+        source = join(VISUALIZATIONS_DIR, 'log.json')
+        if not isfile(source):
+            return
+        destination = join(self.exp_dir, 'log', 'stream_failures')
+        os.makedirs(destination, exist_ok=True)
+        name = 'problem_{}_{}_{}.json'.format(
+            self.problem_count, self.problem_count_suffix, uuid.uuid4().hex[:12])
+        shutil.copy2(source, join(destination, name))
 
     def _init_env_execution(self, pddlstream_problem=None, **kwargs):
         from leap_tools.hierarchical import PDDLStreamForwardEnv
@@ -601,7 +618,12 @@ class PDDLStreamAgent(MotionAgent):
         """ remove all continuous variables from the domain pddl, just do task planning """
         title = '[pddlstream_agent._check_subgoals_grounding]'
         domain_pddl, constant_map, stream_pddl, stream_map, init, goal = pddlstream_problem
-        goal = tuple([goal[0]] + _get_derived_goal(list(goal[1]), init))
+        # goal = tuple([goal[0]] + _get_derived_goal(list(goal[1]), init))
+        raw_goal = list(goal[1])
+        normalized_goal = _replace_goal_body_refs(raw_goal, init, world=self.world)
+        if raw_goal != normalized_goal:
+            print(f'{title}\t normalized goal = {raw_goal} -> {normalized_goal}')
+        goal = tuple([goal[0]] + _get_derived_goal(normalized_goal, init))
         print(f'{title}\t goal = {goal}')
 
         symbolic_domain_pddl, predicates_to_keep = make_symbolic_pddl_inplace(domain_pddl)
@@ -616,11 +638,12 @@ class PDDLStreamAgent(MotionAgent):
             if literal not in new_init:
                 new_init.append(literal)
 
-        if tuple(goal[1]) in new_init:
+        if _contains_goal_literals(goal[1:], new_init):
             return True
-        if goal[1][0] not in predicates_to_keep:
-            print(f'\t goal predicate {goal[1][0]} not found in symbolic domain')
-            return False
+        for literal in goal[1:]:
+            if literal[0] not in predicates_to_keep:
+                print(f'\t goal predicate {literal[0]} not found in symbolic domain')
+                return False
 
         pddl_problem = PDDLProblem(symbolic_domain_pddl, constant_map, empty_stream_body, {}, new_init, goal)
 
@@ -646,8 +669,52 @@ def _get_derived_goal(goal, init):
         return [['containable'] + goal[1:]]
     if goal_predicate in ['holding']:
         return [['graspable'] + goal[-1:]]
+    if goal_predicate in ['picked']:
+        return [['graspable'] + goal[1:]]
+    if goal_predicate in ['sprinkledto']:
+        return [['sprinkler', goal[1]], ['region', goal[2]]]
     return [[goal_predicate] + goal[1:]]
     # return [goal]
+
+
+def _contains_goal_literals(goal_literals, init):
+    def value_keys(value):
+        value_text = str(value)
+        keys = [value_text]
+        if '|' in value_text:
+            keys.append(value_text.split('|', 1)[0])
+        return keys
+
+    def fact_keys(fact):
+        value_options = [value_keys(value) for value in fact[1:]]
+        return {tuple([str(fact[0]).lower()] + list(values)) for values in product(*value_options)}
+
+    init_literals = set()
+    for fact in init:
+        if isinstance(fact, (list, tuple)):
+            init_literals.update(fact_keys(fact))
+    return all(any(key in init_literals for key in fact_keys(literal)) for literal in goal_literals)
+
+
+def _replace_goal_body_refs(goal, init, world=None):
+    """Map VLM body ids in subgoals to the PDDL object keys used in init facts."""
+    body_ref_to_pddl = {}
+    if world is not None:
+        for body, obj in world.BODY_TO_OBJECT.items():
+            body_ref_to_pddl[str(body)] = obj.debug_name
+
+    for fact in init:
+        for value in fact[1:]:
+            value_text = str(value)
+            if '|' in value_text:
+                body_ref_to_pddl[value_text.split('|', 1)[0]] = value_text
+
+    def key_from_value(value):
+        if isinstance(value, tuple):
+            return '(' + ', '.join('none' if item is None else str(item) for item in value) + ')'
+        return str(value)
+
+    return [body_ref_to_pddl.get(key_from_value(value), value) for value in goal]
 
 
 def add_timestamp(exp_name):
@@ -729,6 +796,8 @@ def filter_dynamic_facts(facts):
 
 def correct_home_path(loaded_exp_dir, correct_exp_dir):
     key = '/vlm-tamp/'
+    if key not in loaded_exp_dir or key not in correct_exp_dir:
+        return correct_exp_dir
     home_loaded, exp_path = loaded_exp_dir.split(key)
     home_corrected = correct_exp_dir.split(key)[0]
     return join(home_corrected, key.replace('/', ''), exp_path)

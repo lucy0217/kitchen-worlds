@@ -151,7 +151,12 @@ def find_grasp_in_db(db_file, instance_name, length_variants=False, scale=None,
     found = None
     if instance_name in db:
         all_data = db[instance_name]
-        grasp_key = 'grasps_all' if (use_all_grasps and 'grasps_all' in all_data) else 'grasps'
+        if use_all_grasps and 'grasps_all' in all_data:
+            grasp_key = 'grasps_all'
+        elif use_all_grasps and 'grasps_both_handles' in all_data:
+            grasp_key = 'grasps_both_handles'
+        else:
+            grasp_key = 'grasps'
         if length_variants:
             grasp_key = 'grasps_l'
 

@@ -415,6 +415,16 @@ OBJ_YAWS = {
 }
 
 
+def _lift_contained_placement_z(z, obj_aabb, container_aabb, clearance=0.08):
+    obj_height = get_aabb_extent(obj_aabb)[2]
+    half_height = obj_height / 2.
+    min_z = container_aabb.lower[2] + half_height
+    max_z = container_aabb.upper[2] - half_height
+    if max_z < min_z:
+        return z
+    return min(max(z + clearance, min_z), max_z)
+
+
 def sample_pose(obj, aabb, obj_aabb=None, yaws=OBJ_YAWS):
     ## sample a pose in aabb that can fit an object in
     if obj_aabb is not None:
@@ -587,7 +597,12 @@ def sample_obj_in_body_link_space(obj, body, link=None, PLACEMENT_ONLY=False,
 
     remove_handles(handles)
     #set_renderer(True)
-    if PLACEMENT_ONLY: return x, y, z, yaw
+    if PLACEMENT_ONLY:
+        if link is None:
+            # Body-level containers otherwise push the object to the bottom contact, which can put
+            # the PR2 hand target below the surrounding counter/pot rim during placement IK.
+            z = _lift_contained_placement_z(z, get_aabb(maybe), aabb)
+        return x, y, z, yaw
     # print(nice(aabb2d_from_aabb(aabb)))
     # print(nice(aabb2d_from_aabb(get_aabb(maybe))))
     return maybe

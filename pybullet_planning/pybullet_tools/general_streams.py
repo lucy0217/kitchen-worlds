@@ -14,7 +14,8 @@ from pybullet_tools.utils import invert, ConfSaver, get_name, set_pose, get_link
     get_joint_limits, unit_pose, point_from_pose, draw_point, PI, quat_from_pose, angle_between, \
     tform_point, interpolate_poses, draw_pose, RED, remove_handles, stable_z, wait_unlocked, \
     get_aabb_center, set_renderer, timeout, get_aabb_extent, wait_if_gui, wait_for_duration, \
-    get_joint_type, PoseSaver, draw_aabb, LockRenderer, get_unit_vector, unit_quat, get_center_extent
+    get_joint_type, PoseSaver, draw_aabb, LockRenderer, get_unit_vector, unit_quat, get_center_extent, \
+    euler_from_quat
 from pybullet_tools.pr2_primitives import Pose, Grasp, APPROACH_DISTANCE, GRASP_LENGTH
 
 from pybullet_tools.bullet_utils import nice, visualize_point, collided, is_box_entity, \
@@ -216,7 +217,8 @@ def get_compute_pose_kin():
             return None
         # p1 = RelPose(o1, support=rp.support, confs=(p2.confs + rp.confs),
         #              init=(rp.init and p2.init))
-        p1 = Pose(o1, value=multiply(p2.value, rp.value))
+        # p1 = Pose(o1, value=multiply(p2.value, rp.value))
+        p1 = Pose(o1, value=multiply(p2.value, rp.value), support=getattr(rp, 'support', None))
         return (p1,)
     return fn
 
@@ -434,6 +436,7 @@ def get_contain_gen(problem, collisions=True, num_samples=20, verbose=False, rel
 
             if isinstance(space, Object):
                 space = Object.pybullet_name
+            adjusted_body_level_pose = False
             if isinstance(space, tuple):
                 result = sample_obj_in_body_link_space(body, body=space[0], link=space[-1],
                                                        PLACEMENT_ONLY=True, verbose=verbose, **kwargs)
@@ -443,13 +446,22 @@ def get_contain_gen(problem, collisions=True, num_samples=20, verbose=False, rel
                 body_pose = ((x, y, z), quat_from_euler(Euler(yaw=yaw)))
             else:
                 ## e.g. braiser body
-                result = sample_obj_in_body_link_space(body, body=space, link=None,
-                                                       PLACEMENT_ONLY=True, verbose=verbose, **kwargs)
-                if result is None:
-                    break
-                _, _, z, yaw = result
-                x, y, _ = get_aabb_center(get_aabb(space))
-                body_pose = ((x, y, z), quat_from_euler(Euler(yaw=yaw)))
+                body_name = world.get_name(body).lower() if hasattr(world, 'get_name') else ''
+                space_name = world.get_name(space).lower() if hasattr(world, 'get_name') else ''
+                if learned_sampling and 'braiserlid' in body_name and 'braiserbody' in space_name:
+                    body_pose = adjust_sampled_pose(world, body, space, get_pose(body))
+                    adjusted_body_level_pose = True
+                else:
+                    result = sample_obj_in_body_link_space(body, body=space, link=None,
+                                                           PLACEMENT_ONLY=True, verbose=verbose, **kwargs)
+                    if result is None:
+                        break
+                    _, _, z, yaw = result
+                    x, y, _ = get_aabb_center(get_aabb(space))
+                    body_pose = ((x, y, z), quat_from_euler(Euler(yaw=yaw)))
+
+            if learned_sampling and isinstance(space, int) and not adjusted_body_level_pose:
+                body_pose = adjust_sampled_pose(world, body, space, body_pose)
 
             if body_pose is None:
                 break
@@ -502,7 +514,26 @@ def get_pose_in_space_test():
 """
 
 
+# SPRINKLE_MIN_CLEARANCE = 0.45
+SPRINKLE_MIN_CLEARANCE = 0.85
+
+
 def get_above_pose_gen(problem, collisions=True, num_samples=2, visualize=False):
+    def get_region_support(region, p2):
+        if isinstance(region, (int, tuple)):
+            return region
+        support = getattr(p2, 'support', None)
+        if support is not None:
+            return support
+        if not isinstance(region, int):
+            return None
+        world = getattr(problem, 'world', None)
+        if world is None or not hasattr(world, 'body_to_object'):
+            return None
+        body_info = world.body_to_object(region)
+        supporting_surface = getattr(body_info, 'supporting_surface', None)
+        return getattr(supporting_surface, 'pybullet_name', None)
+
     def gen(region, p2, body):
         if isinstance(region, int):  ## otherwise it's static link
             p2.assign()
@@ -512,12 +543,14 @@ def get_above_pose_gen(problem, collisions=True, num_samples=2, visualize=False)
         h = get_aabb_extent(get_aabb(body))[2]
         (x, y, _), quat = p2.value
         z = aabb.upper[2]
-        for dz in [0.03, 0.05, 0.1, 0.15]:
-            point = x, y, z + h/2 + dz
+        for dz in [0.03, 0.05, 0.1, 0.15, 0.35]:
+            # Keep held sprinklers high enough for PR2 IK instead of nearly touching the region rim.
+            point = x, y, z + max(h/2, SPRINKLE_MIN_CLEARANCE) + dz
             # yield (Pose(body, (point, quat)), )
             for _ in range(num_samples):
                 yaw = random.uniform(0, 2*math.pi)
-                p = Pose(body, (point, quat_from_euler(Euler(yaw=yaw, roll=PI))))
+                p = Pose(body, (point, quat_from_euler(Euler(yaw=yaw, roll=PI))),
+                         support=get_region_support(region, p2))
                 if visualize:
                     set_renderer(True)
                     p.assign()
@@ -643,6 +676,20 @@ def sample_joint_position_gen(problem, num_samples=14, p_max=PI, to_close=False,
 
             else:
 
+                if _is_faucet_handle_joint(world, o):
+                    pstns.extend(_faucet_reversible_open_positions(lower, upper, pstn1.value, num_samples))
+                    pstns = [round(pstn, 3) for pstn in pstns]
+                    if visualize:
+                        visualize_sampled_pstns(x_min, x_max, pstns)
+                    if verbose:
+                        print(f'\tsample_joint_position_gen({o}, {pstn1.value}, closed={to_close}, p_max={p_max}) '
+                              f'choosing from {pstns}, joint limits = [{round(x_min, 3)}, {round(x_max, 3)}]')
+                    random.shuffle(pstns)
+                    positions = [(Position(o, p), ) for p in pstns]
+                    for pstn2 in positions:
+                        yield pstn2
+                    return
+
                 lower_new, upper_new = None, None
                 if lower < 0 and upper == 0:
                     # ## prevent from opening all the way is unreachable
@@ -708,6 +755,7 @@ def get_grasp_gen(problem, collisions=True, num_samples=20, randomize=True, verb
     def fn(body, randomize_here=randomize):
         ## ----- get grasp transformations
         loaded = world.load_saved_grasps(body) if hasattr(world, 'load_saved_grasps') else None
+        grasp_source = 'saved-world-grasps' if loaded is not None else 'hand-grasp-db'
         if loaded is None:
             grasps_O = get_hand_grasps(world, body, verbose=verbose, test_offset=test_offset, **kwargs)
         else:
@@ -737,6 +785,13 @@ def get_grasp_gen(problem, collisions=True, num_samples=20, randomize=True, verb
 
         if randomize_here:
             random.shuffle(grasps)
+        grasps = prioritize_grasps_for_body(world, body, grasps)
+        if verbose:
+            from pybullet_tools.logging_utils import myprint
+            myprint(f'\tget_grasp_gen({body}, source={grasp_source}, randomize={randomize_here}, '
+                    f'num_samples={num_samples}) has {len(grasps)} grasps')
+            for jj, grasp in enumerate(grasps[:min(len(grasps), 5)]):
+                myprint(f'\t  grasp[{jj}] = {nice(grasp.value)}')
         # print(f'get_grasp_gen({body}, {world.get_name(body)}) = {len(grasps)} grasps')
         # return [(g,) for g in grasps]
         i = 0
@@ -750,6 +805,48 @@ def get_grasp_gen(problem, collisions=True, num_samples=20, randomize=True, verb
         #     set_renderer(False)
 
     return fn
+
+
+def prioritize_grasps_for_body(world, body, grasps):
+    name = world.get_name(body).lower() if hasattr(world, 'get_name') else ''
+    if 'braiserlid' in name:
+        def lid_center_grasp_first(grasp):
+            value = getattr(grasp, 'value', None)
+            if isinstance(value, tuple) and len(value) == 2:
+                point, rotation = value
+            else:
+                point, rotation = value[:3], value[3:6]
+            x, y, z = point
+            euler = euler_from_quat(rotation) if len(rotation) == 4 else rotation
+            roll, pitch, yaw = euler
+            reachable_side = abs(roll) < 0.1 and pitch > 0 and yaw < 0
+            return (0 if reachable_side else 1, abs(x), abs(y - 0.232), abs(z - 0.007))
+        return sorted(grasps, key=lid_center_grasp_first)
+
+    try:
+        condiment_bodies = set(world.cat_to_bodies('sprinkler')) | set(world.cat_to_bodies('condiment'))
+    except Exception:
+        condiment_bodies = set()
+    if body not in condiment_bodies:
+        return grasps
+    if 'salt' in name:
+        def top_grasp_first(grasp):
+            value = getattr(grasp, 'value', None)
+            point = value[0] if isinstance(value, tuple) and len(value) == 2 else value[:3]
+            x, y, z = [abs(v) for v in point]
+            return 0 if z > 0.05 and z >= x and z >= y and point[2] > 0 else 1
+        return sorted(grasps, key=top_grasp_first)
+
+    if 'pepper' not in name:
+        return grasps
+
+    def side_grasp_first(grasp):
+        value = getattr(grasp, 'value', None)
+        point = value[0] if isinstance(value, tuple) and len(value) == 2 else value[:3]
+        x, y, z = [abs(v) for v in point]
+        return 0 if y > 0.05 and y >= x and y >= z else 1
+
+    return sorted(grasps, key=side_grasp_first)
 
 
 # def get_box_grasp_gen(problem, grasp_length=GRASP_LENGTH, grasp_types=None, collisions=False, randomize=True):
@@ -850,6 +947,106 @@ def get_handle_width(body_joint):
     return j.handle_width
 
 
+def _is_faucet_handle_joint(world, body_joint):
+    if body_joint == (9, 3):
+        return True
+    categories = []
+    if hasattr(world, 'BODY_TO_OBJECT') and body_joint in world.BODY_TO_OBJECT:
+        categories = getattr(world.BODY_TO_OBJECT[body_joint], 'categories', []) or []
+    if 'faucet' in categories and ('knob' in categories or 'joint' in categories):
+        return True
+    name = world.get_name(body_joint).lower() if hasattr(world, 'get_name') else ''
+    return 'faucet' in name and ('knob' in name or 'joint' in name)
+
+
+def _faucet_reversible_open_positions(lower, upper, current_value, num_samples):
+    if lower < 0 and upper == 0:
+        positions = [-0.4]
+        sample_lower = max(lower, -0.42)
+        sample_upper = min(upper, -0.4)
+        positions.extend(np.random.uniform(sample_lower, sample_upper) for _ in range(num_samples))
+        return [p for p in positions if abs(p) > abs(current_value) + 0.3]
+    positions = [0.4]
+    sample_lower = max(lower, 0.4)
+    sample_upper = min(upper, 0.42)
+    positions.extend(np.random.uniform(sample_lower, sample_upper) for _ in range(num_samples))
+    return [p for p in positions if abs(p) > abs(current_value) + 0.3]
+
+
+def _offset_handle_grasp_pose(grasp, point_offset=(0, 0, 0), euler_offset=(0, 0, 0)):
+    if isinstance(grasp, tuple) and len(grasp) == 2:
+        point, rotation = grasp
+        point = tuple(point[i] + point_offset[i] for i in range(3))
+        if len(rotation) == 4:
+            rotation = quat_from_euler(Euler(*(
+                euler_from_quat(rotation)[i] + euler_offset[i] for i in range(3))))
+        else:
+            rotation = tuple(rotation[i] + euler_offset[i] for i in range(3))
+        return point, rotation
+    return tuple(grasp[i] + (point_offset + euler_offset)[i] for i in range(6))
+
+
+def _faucet_handle_grasp_variants(grasps):
+    offsets = [
+        ((0.000, 0.00, 0.00), (PI, 0.00, PI / 2)),
+        ((0.047, 0.00, 0.00), (PI, PI / 2, -PI)),
+        ((-0.048, 0.00, 0.00), (PI, PI / 2, -PI)),
+        ((0.000, 0.00, 0.00), (PI, PI / 2, -PI)),
+        ((0.047, 0.00, 0.00), (PI, -PI / 2, PI)),
+        ((-0.048, 0.00, 0.00), (PI, -PI / 2, PI)),
+        ((0.000, 0.00, 0.00), (PI, -PI / 2, PI)),
+        ((0.00, 0.00, 0.00), (0.00, 0.00, 0.00)),
+        ((0.00, 0.04, 0.00), (0.00, 0.00, 0.00)),
+        ((0.00, -0.04, 0.00), (0.00, 0.00, 0.00)),
+        ((0.03, 0.00, 0.00), (0.00, 0.00, 0.00)),
+        ((-0.03, 0.00, 0.00), (0.00, 0.00, 0.00)),
+        ((0.00, 0.00, 0.03), (0.00, 0.00, 0.00)),
+        ((0.00, 0.00, -0.03), (0.00, 0.00, 0.00)),
+        ((0.00, 0.00, 0.00), (0.00, 0.00, PI / 2)),
+        ((0.00, 0.00, 0.00), (0.00, 0.00, -PI / 2)),
+        ((0.00, 0.00, 0.00), (0.00, PI / 2, 0.00)),
+        ((0.00, 0.00, 0.00), (0.00, -PI / 2, 0.00)),
+    ]
+    variants = []
+    seen = set()
+    for grasp in grasps:
+        for point_offset, euler_offset in offsets:
+            variant = _offset_handle_grasp_pose(grasp, point_offset, euler_offset)
+            key = nice(variant)
+            if key in seen:
+                continue
+            seen.add(key)
+            variants.append(variant)
+    return variants
+
+
+def _prioritize_faucet_handle_grasps(grasps):
+    def as_xyzrpy(grasp):
+        value = grasp.value if hasattr(grasp, 'value') else grasp
+        if isinstance(value, tuple) and len(value) == 2:
+            point, rotation = value
+            euler = euler_from_quat(rotation) if len(rotation) == 4 else rotation
+            return tuple(point) + tuple(euler)
+        if isinstance(value, tuple) and len(value) == 6:
+            return value
+        return None
+
+    def priority(grasp):
+        value = as_xyzrpy(grasp)
+        if value is None:
+            return 1
+        x, y, z, roll, pitch, yaw = value
+        if (abs(x - 0.011) < 0.01 and abs(y - 0.074) < 0.01 and abs(z) < 0.01 and
+                abs(abs(roll) - PI) < 0.01 and abs(pitch) < 0.01 and abs(yaw - PI / 2) < 0.01):
+            return 0
+        if (abs(x - 0.011) < 0.01 and abs(y - 0.074) < 0.01 and abs(z) < 0.01 and
+                abs(roll) < 0.01 and abs(pitch) < 0.01 and abs(yaw + PI / 2) < 0.01):
+            return 1
+        return 2
+
+    return sorted(grasps, key=priority)
+
+
 def get_handle_grasp_list_gen(problem, collisions=True, num_samples=10, **kwargs):
     funk = get_handle_grasp_gen(problem, collisions, max_samples=num_samples, **kwargs)
 
@@ -875,6 +1072,7 @@ def get_handle_grasp_gen(problem, collisions=False, max_samples=2,
     title = 'general_streams.get_handle_grasp_gen |'
 
     def fn(body_joint):
+        sample_limit = max_samples
         body, joint = body_joint
         is_knob = body_joint in world.cat_to_bodies('knob')
         handle_link = get_handle_link(body_joint, is_knob=is_knob)
@@ -885,13 +1083,19 @@ def get_handle_grasp_gen(problem, collisions=False, max_samples=2,
                                  length_variants=True, grasp_length=grasp_length,
                                  visualize=visualize, verbose=verbose, retain_all=retain_all)
 
+        is_faucet = _is_faucet_handle_joint(world, body_joint)
+        if is_faucet:
+            grasps = _prioritize_faucet_handle_grasps(_faucet_handle_grasp_variants(grasps) + list(grasps))
+            sample_limit = 4 if sample_limit is None else min(sample_limit, 4)
+
         if verbose: print(f'\n{title} grasps =', [nice(g) for g in grasps])
 
         g_type = 'top'
         arm = 'hand'
         if robot.name.startswith('pr2'):
             arm = 'left'
-        app = robot.get_approach_vector(arm, g_type, scale=0.5)
+        approach_scale = 0.2 if is_faucet else 0.5
+        app = robot.get_approach_vector(arm, g_type, scale=approach_scale)
         grasps = [HandleGrasp('side', body_joint, g, robot.get_approach_pose(app, g),
                               robot.get_carry_conf(arm, g_type, g)) for g in grasps]
         for grasp in grasps:
@@ -906,9 +1110,10 @@ def get_handle_grasp_gen(problem, collisions=False, max_samples=2,
 
         if randomize:
             random.shuffle(grasps)
-        if max_samples is not None and len(grasps) > max_samples:
-            random.shuffle(grasps)
-            grasps = grasps[:max_samples]
+        if sample_limit is not None and len(grasps) > sample_limit:
+            if not is_faucet:
+                random.shuffle(grasps)
+            grasps = grasps[:sample_limit]
         # return [(g,) for g in grasps]
         for g in grasps:
            yield (g,)

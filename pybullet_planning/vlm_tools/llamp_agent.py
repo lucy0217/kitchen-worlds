@@ -159,6 +159,9 @@ class LLAMPAgent(PDDLStreamAgent):
         """ make new plans given a pddlstream_probelm """
 
         if self.llamp_api is not None:
+            if self.goal_sequence is not None and len(self.goal_sequence) == 0:
+                self.plan = None
+                return self.plan
             self._replan_preprocess(observation)
             self._init_env_execution()
         debug_just_fail = False
@@ -428,7 +431,8 @@ class LLAMPAgent(PDDLStreamAgent):
                                 'status': status, 'object_reducer': object_reducer_name, 'last_node': self.last_node
                             })
                             solved = (status == SUCCEED)
-                            if not solved and failed_but_continue_branch:
+                            if not solved and failed_but_continue_branch and len(self.goal_sequence) > 0 \
+                                    and not self._holding_blocks_next_pick(facts, self.goal_sequence[0]):
                                 return self.policy(observation)
                             self.save_stats(solved=solved, final=solved, failed_time=True, save_csv=True)
                             return None
@@ -459,6 +463,18 @@ class LLAMPAgent(PDDLStreamAgent):
 
     def _check_subgoal_achieved(self, facts, next_goal):
         return check_subgoal_achieved(facts, next_goal, self.world)
+
+    def _holding_blocks_next_pick(self, facts, next_goal):
+        if not isinstance(next_goal, (list, tuple)) or len(next_goal) < 2:
+            return False
+        if str(next_goal[0]).lower() != 'picked':
+            return False
+        target = next_goal[1]
+        occupied = {fact[1] for fact in facts
+                    if len(fact) >= 3 and str(fact[0]).lower() == 'atgrasp' and fact[2] != target}
+        # A different object in one hand does not block a dual-arm pick.
+        arms = getattr(getattr(self, 'robot', None), 'arms', ['left'])
+        return bool(arms) and all(arm in occupied for arm in arms)
 
     def _update_pddlstream_problem(self, init, goals, reduce_objects=True):
         from pybullet_tools.logging_utils import myprint as print
@@ -562,23 +578,31 @@ class LLAMPAgent(PDDLStreamAgent):
         return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
     def _update_obstacles_in_stream_map(self, stream_map, world):
-        from pddlstream.language.generator import from_gen_fn
+        from pddlstream.language.generator import from_fn, from_gen_fn
         from pybullet_tools.mobile_streams import get_ik_pull_gen, get_ik_pull_with_link_gen, \
-            get_ik_gen_old, get_ik_rel_gen_old
-        from pybullet_tools.stream_agent import pull_kwargs, ir_kwargs
+            get_ik_fn_old, get_ik_gen_old, get_ik_rel_fn_old, get_ik_rel_gen_old
+        from pybullet_tools.stream_agent import pull_kwargs, ir_kwargs, add_lid_pick_stream_diagnostics
         kwargs = dict(collisions=True, teleport=False, custom_limits=self.custom_limits)
+        ir = dict(ir_kwargs)
+        stream_kwargs = getattr(world, 'stream_kwargs', {}) or {}
+        ir.update(dict(
+            learned=stream_kwargs.get('use_learned_ir', ir['learned']),
+            max_attempts=stream_kwargs.get('ir_max_attempts', ir['max_attempts']),
+        ))
         problem = State(world)
 
         print_green(f'[llamp_agent._update_obstacles_in_stream_map]\t using obstacles {problem.fixed}')
         # world.print_ignored_pairs()
 
         stream_map.update({
-            'inverse-reachability': from_gen_fn(get_ik_gen_old(problem, **ir_kwargs, **kwargs)),
-            'inverse-reachability-rel': from_gen_fn(get_ik_rel_gen_old(problem, learned=ir_kwargs['learned'], **kwargs)),
+            'inverse-reachability': from_gen_fn(get_ik_gen_old(problem, **ir, **kwargs)),
+            'inverse-kinematics': from_fn(get_ik_fn_old(problem, verbose=True, visualize=False, **kwargs)),
+            'inverse-reachability-rel': from_gen_fn(get_ik_rel_gen_old(problem, **ir, **kwargs)),
+            'inverse-kinematics-rel': from_fn(get_ik_rel_fn_old(problem, verbose=True, visualize=False, **kwargs)),
             'inverse-kinematics-pull': from_gen_fn(get_ik_pull_gen(problem, **kwargs, **pull_kwargs)),
             'inverse-kinematics-pull-with-link': from_gen_fn(get_ik_pull_with_link_gen(problem, **kwargs, **pull_kwargs)),
         })
-        return stream_map
+        return add_lid_pick_stream_diagnostics(stream_map)
 
     def _modify_goal(self, goals=None):
         if goals is None:
@@ -844,7 +868,10 @@ class LLAMPAgent(PDDLStreamAgent):
                 continue
             if g['status'] == FAILED:
                 failed_count[str(g['goal_original'])] += 1
-                continue
+                # A fixed sequence keeps skipped failures in its denominator.
+                # Reprompting replaces the failed suffix with a new branch.
+                if self.llamp_api is None or 'reprompt' in self.llamp_api.planning_mode:
+                    continue
             if len(previous_goals) > 0 and previous_goals[-1] == g['goal_original']:
                 continue
             previous_goals.append(g['goal_original'])
@@ -993,6 +1020,8 @@ def get_progress_summary_from_time_log(time_log, whole_goal_sequence,
                 reprompt_after_subgoals.append(last_node)
 
         last_status = log['status']
+        if last_status == STARTED and log.get('plan') not in [None, [], 'FAILED']:
+            last_status = SOLVED
         last_node = log['last_node']
 
         task_idx = int(task_idx_and_branch[0]) + previous_starting_index

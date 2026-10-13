@@ -165,8 +165,6 @@ def parse_agent_args(config='config_dev.yaml', config_root=PROBLEM_CONFIG_PATH,
     seed = args.seed
     if seed is None:
         seed = random.randint(0, 10**6-1)
-    else:
-        args.viewer = True
     set_random_seed(seed)
     set_numpy_seed(seed)
     args.seed = seed

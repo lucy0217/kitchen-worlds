@@ -48,6 +48,8 @@ def has_pygraphviz():
 
 
 def reset_visualizations():
+    global VISUALIZE
+    VISUALIZE = True
     # clear_dir(VISUALIZATIONS_DIR)
     ensure_dir(CONSTRAINT_NETWORK_DIR)
     ensure_dir(STREAM_PLAN_DIR)

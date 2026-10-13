@@ -62,7 +62,7 @@ def check_subgoal_achieved(facts, goal, world):
             if goal[0] in ['closedjoint', 'close'] and atposition[0].value == min_position:
                 result = True
 
-    if goal[0] in ['holding']:
+    if goal[0] in ['holding', 'picked']:
         found = [f for f in facts if f[0].startswith('at') and f[0].endswith('grasp') and f[2] == goal[-1]]
         if len(found) > 0:
             result = True
@@ -154,9 +154,9 @@ def reduce_init_given_skeleton(init, skeleton):
 
 
 def remove_unnecessary_movable_given_goal(init, goals, world):
-    """ when the goal involves putting A into B, don't move B """
+    """ when the goal involves putting A onto/into/toward B, don't move B """
     goal = goals[0]
-    if goal[0].lower() in ['on']:
+    if goal[0].lower() in ['on', 'in', 'sprinkledto']:
         surface = goal[-1]
         if isinstance(surface, tuple):
             surface = surface[0]

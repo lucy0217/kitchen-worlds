@@ -57,7 +57,7 @@ planner:
   max_evaluation_plans: 12
   max_complexity: 5
   max_iterations: 4
-  log_failures: false
+  log_failures: true
   soft_subgoals: false
 
 ## planning stream related
@@ -68,7 +68,8 @@ streams:
   disable_movable_collision: false
   disable_base_collision: false
   top_grasp_tolerance: null # 0.8
-  use_all_grasps: false
+  use_all_grasps: true
+  use_learned_ir: false
   num_grasps: 15
   ir_max_attempts: 10
 
@@ -76,7 +77,7 @@ streams:
 sim:
   window_width: 720  # 1440
   window_height: 619  # 1238
-  viewer: true
+  viewer: false
   lock: true
   simulate: false
   drive: false

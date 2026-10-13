@@ -68,6 +68,104 @@ ir_kwargs = dict(ir_only=True, max_attempts=60, learned=True)
 FAILED = 'FAILED'
 
 
+LID_PICK_STREAM_DIAG_NAMES = {
+    'sample-grasp', 'inverse-reachability', 'inverse-kinematics', 'plan-base-motion'
+}
+LID_PICK_STREAM_DIAG_BASES = [
+    (1.25, 7.55, 0.3, 2.8),
+    (1.014, 7.723, 0.297, -2.795),
+]
+
+
+def _lid_pick_stream_diag_enabled():
+    return os.environ.get('LID_PICK_STREAM_DIAG', '').lower() in {'1', 'true', 'yes'}
+
+
+def _as_sequence(value):
+    if isinstance(value, (list, tuple)):
+        return value
+    if hasattr(value, 'values'):
+        return value.values
+    return None
+
+
+def _matches_lid_pick_stream(name, args):
+    if name not in LID_PICK_STREAM_DIAG_NAMES:
+        return False
+    if name == 'sample-grasp':
+        return len(args) > 0 and args[0] == 4
+    if name in {'inverse-reachability', 'inverse-kinematics'}:
+        return len(args) > 1 and args[1] == 4
+    if name == 'plan-base-motion' and len(args) >= 2:
+        target = _as_sequence(args[1])
+        if target is None or len(target) < 4:
+            return False
+        return any(all(abs(target[i] - base[i]) < 0.08 for i in range(4)) for base in LID_PICK_STREAM_DIAG_BASES)
+    return False
+
+
+def _summarize_stream_output(output):
+    if output is None:
+        return 'None'
+    if isinstance(output, list):
+        return 'list(len={}) {}'.format(len(output), output[:3])
+    return repr(output)
+
+
+def _describe_stream_callable(fn):
+    module = getattr(fn, '__module__', None)
+    name = getattr(fn, '__name__', None)
+    closure = getattr(fn, '__closure__', None)
+    closure_types = []
+    if closure:
+        for cell in closure:
+            try:
+                content = cell.cell_contents
+            except ValueError:
+                closure_types.append('empty')
+                continue
+            closure_types.append('{}:{}:{}:{}'.format(
+                type(content).__name__, getattr(content, '__module__', None),
+                getattr(content, '__qualname__', getattr(content, '__name__', None)), repr(content)))
+    return 'repr={} type={} module={} name={} closure_types={}'.format(
+        repr(fn), type(fn).__name__, module, name, closure_types)
+
+
+def add_lid_pick_stream_diagnostics(stream_map):
+    if not _lid_pick_stream_diag_enabled():
+        return stream_map
+    for name in LID_PICK_STREAM_DIAG_NAMES:
+        fn = stream_map.get(name)
+        if fn is None or getattr(fn, '_lid_pick_stream_diag_wrapped', False):
+            continue
+
+        def make_wrapper(stream_name, stream_fn):
+            def wrapped(*args, **kwargs):
+                should_log = _matches_lid_pick_stream(stream_name, args)
+                if should_log:
+                    print('[LID_PICK_STREAM_DIAG call] {} args={}'.format(stream_name, args))
+                    print('[LID_PICK_STREAM_DIAG fn] {} {}'.format(
+                        stream_name, _describe_stream_callable(stream_fn)))
+                generator = stream_fn(*args, **kwargs)
+                if not should_log:
+                    return generator
+                print('[LID_PICK_STREAM_DIAG generator] {} repr={} type={}'.format(
+                    stream_name, repr(generator), type(generator).__name__))
+
+                def traced_generator():
+                    for index, output in enumerate(generator):
+                        print('[LID_PICK_STREAM_DIAG yield] {} #{} {}'.format(
+                            stream_name, index, _summarize_stream_output(output)))
+                        yield output
+                    print('[LID_PICK_STREAM_DIAG done] {}'.format(stream_name))
+                return traced_generator()
+            wrapped._lid_pick_stream_diag_wrapped = True
+            return wrapped
+
+        stream_map[name] = make_wrapper(name, fn)
+    return stream_map
+
+
 def get_stream_map(p, c, l, t, movable_collisions=True, motion_collisions=True,
                    pull_collisions=True, base_collisions=True, debug=False, verbose=False,
                    use_all_grasps=False, top_grasp_tolerance=None, side_grasp_tolerance=None, ir_max_attempts=60,
@@ -137,10 +235,10 @@ def get_stream_map(p, c, l, t, movable_collisions=True, motion_collisions=True,
         'compute-pose-kin': from_fn(get_compute_pose_kin()),
         'compute-pose-rel-kin': from_fn(get_compute_pose_rel_kin()),
 
-        'inverse-reachability': from_gen_fn(get_ik_gen_old(p, verbose=True, visualize=False, **ir_kwargs, **tc)),
+        'inverse-reachability': from_gen_fn(get_ik_gen_old(p, verbose=True, visualize=False, **ir, **tc)),
         'inverse-kinematics': from_fn(get_ik_fn_old(p, verbose=True, visualize=False, **ik)),
 
-        'inverse-reachability-rel': from_gen_fn(get_ik_rel_gen_old(p, verbose=False, visualize=False, **ir_kwargs, **tc)),
+        'inverse-reachability-rel': from_gen_fn(get_ik_rel_gen_old(p, verbose=False, visualize=False, **ir, **tc)),
         'inverse-kinematics-rel': from_fn(get_ik_rel_fn_old(p, verbose=False, visualize=False, **ik)),
 
         ## pddl_domains/extensions/_pull_decomposed_stream.pddl
@@ -243,7 +341,7 @@ def get_stream_map(p, c, l, t, movable_collisions=True, motion_collisions=True,
             #'test-pose-in-space': from_test(universe_test),
         })
 
-    return stream_map
+    return add_lid_pick_stream_diagnostics(stream_map)
 
 
 def get_stream_info(unique=False, defer_fn=defer_unique):
@@ -494,7 +592,8 @@ def fix_init_given_goals(goals, init):
                 add_init += [('StaticLink', goal[2])]
 
         elif pred == 'in':
-            add_init += [('Containble', goal[1], goal[2]), ('Graspable', goal[1]), ('Space', goal[2])]
+            # add_init += [('Containble', goal[1], goal[2]), ('Graspable', goal[1]), ('Space', goal[2])]
+            add_init += [('Containable', goal[1], goal[2]), ('Graspable', goal[1]), ('Space', goal[2])]
 
     to_add = [f for f in add_init if f not in init and tuple([f[0].lower()] + list(f[1:])) not in init]
     if len(to_add) > 0:
